@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-admin-bg: #020617;
+  --color-admin-bg-deep: #030b1f;
+  --color-admin-card: #0b1326;
+  --color-admin-card-soft: #111a33;
+  --color-admin-card-hover: #0f1a30;
+  --color-admin-border: rgba(255, 255, 255, 0.06);
+  --color-admin-border-light: rgba(255, 255, 255, 0.08);
+  --color-admin-gold: #E6C36A;
+  --color-admin-gold-dark: #c9a84e;
+  --color-admin-gold-light: #f0d48a;
+  --color-admin-text: #FFFFFF;
+  --color-admin-text-secondary: #94A3B8;
+  --color-admin-text-muted: #64748B;
+  --color-admin-green: #4ADE80;
+  --color-admin-red: #EF4444;
+  --color-admin-blue: #3B82F6;
+  --color-admin-purple: #A78BFA;
+  --color-admin-sidebar: #030812;
+  --color-admin-sidebar-hover: rgba(255, 255, 255, 0.05);
+  --color-admin-input: #1A2235;
+
+  --font-sans: "Poppins", "Inter", system-ui, -apple-system, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: linear-gradient(135deg, #020617 0%, #030b1f 100%);
+  color: var(--color-admin-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+html {
+  overflow-x: hidden;
+  scrollbar-color: rgba(230, 195, 106, 0.2) #020617;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #020617; }
+::-webkit-scrollbar-thumb { background: rgba(230, 195, 106, 0.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(230, 195, 106, 0.3); }
+
+::selection {
+  background: rgba(230, 195, 106, 0.3);
+  color: white;
+}
+
+input, select, textarea {
+  font-family: inherit;
+}
+
+table { border-collapse: collapse; }
+
+.admin-main-panel {
+  margin-left: 0;
+}
+
+@media (min-width: 1024px) {
+  .admin-main-panel {
+    margin-left: 260px;
+  }
+}
+
+/* Smooth transitions */
+button, a, input, select, textarea {
+  transition: all 0.2s ease;
+}
