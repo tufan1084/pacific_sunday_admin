@@ -9,7 +9,7 @@ import FormField, { Input, Select } from "@/app/components/ui/FormField";
 import Button from "@/app/components/ui/Button";
 import Loader from "@/app/components/Loader";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ;
 
 // SVG path constants
 const ICON_USERS = "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75";

@@ -6,7 +6,7 @@ import DataTable from "@/app/components/DataTable";
 import Button from "@/app/components/ui/Button";
 import Loader from "@/app/components/Loader";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 
 // SVG path constants
 const ICON_BAG = "M20 7h-4l-2-3H10L8 7H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z";
