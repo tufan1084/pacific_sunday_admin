@@ -10,7 +10,7 @@ export default function StatsCard({ title, value, change, positive, icon }: Stat
   return (
     <div className="group rounded-xl border border-white/[0.06] bg-gradient-to-br from-[#0b1326] to-[#0a1020] transition-all hover:border-white/[0.1] hover:shadow-lg hover:shadow-black/20" style={{ padding: "10px 16px 10px 30px", marginTop: "10px", marginBottom: "10px" }}>
       <div className="mb-2.5 flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">{title}</span>
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-[#E6C36A]">{title}</span>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E6C36A]/10 transition-all group-hover:bg-[#E6C36A]/15">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#E6C36A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d={icon} />

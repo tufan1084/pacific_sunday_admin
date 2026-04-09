@@ -61,6 +61,27 @@ input, select, textarea {
 
 table { border-collapse: collapse; }
 
+/* ── Global Border Radius ── */
+* {
+  --tw-border-radius: 5px;
+}
+
+/* Override all Tailwind rounded classes to 5px (except rounded-full for circles/spinners) */
+.rounded-lg, .rounded-xl, .rounded-md {
+  border-radius: 5px !important;
+}
+
+/* ── Global Typography Rules ── */
+/* Headings / Titles / Labels → Gold */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--color-admin-gold);
+}
+
+/* Description / secondary text → White 60% */
+p, .description {
+  color: rgba(255, 255, 255, 0.6);
+}
+
 .admin-main-panel {
   margin-left: 0;
 }
@@ -75,3 +96,25 @@ table { border-collapse: collapse; }
 button, a, input, select, textarea {
   transition: all 0.2s ease;
 }
+
+/* ── Loading Animation ── */
+@keyframes loader-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50% { transform: scale(1.2); opacity: 1; }
+}
+
+@keyframes loader-bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-8px); }
+}
+
+.loader-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #E6C36A;
+  animation: loader-bounce 1.2s ease-in-out infinite;
+}
+
+.loader-dot:nth-child(2) { animation-delay: 0.15s; }
+.loader-dot:nth-child(3) { animation-delay: 0.3s; }

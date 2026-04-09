@@ -31,7 +31,7 @@ export default function DataTable<T extends Record<string, unknown>>({
   const [page, setPage] = useState(0);
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const perPage = 10;
+  const perPage = 25;
 
   const handleSort = (key: string) => {
     if (sortKey === key) {
@@ -80,8 +80,9 @@ export default function DataTable<T extends Record<string, unknown>>({
   return (
     <div className="rounded-xl border border-white/[0.08] bg-gradient-to-br from-[#0b1326] to-[#0a1020] shadow-lg" style={{ marginTop: "10px", marginBottom: "10px" }}>
       {searchKey && (
-        <div style={{ padding: "20px" }}>
-          <div className="flex items-center gap-3 rounded-lg border border-white/[0.08] bg-[#1A2235] px-4" style={{ height: "48px" }}>
+        <div className="flex items-center gap-3" style={{ padding: "20px 20px 10px 20px" }}>
+          <div className="shrink-0 text-sm font-bold text-[#E6C36A]">Search</div>
+          <div className="flex items-center gap-3 rounded-lg border border-white/[0.08] bg-[#1A2235]" style={{ height: "48px", paddingLeft: "10px", paddingRight: "16px", maxWidth: "400px", width: "100%" }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round">
               <circle cx="11" cy="11" r="8" />
               <path d="M21 21l-4.35-4.35" />
@@ -115,7 +116,7 @@ export default function DataTable<T extends Record<string, unknown>>({
             <button
               key={col.key}
               onClick={() => handleSort(col.key)}
-              className="flex items-center gap-1.5 text-left text-xs font-bold uppercase tracking-wider text-[#E6C36A] transition-colors hover:text-[#c9a84e]"
+              className="flex items-center gap-1.5 text-left text-sm font-bold text-[#E6C36A] transition-colors hover:text-[#c9a84e]"
             >
               {col.label}
               <div className="flex flex-col">
@@ -148,7 +149,7 @@ export default function DataTable<T extends Record<string, unknown>>({
               </div>
             </button>
           ))}
-          {actions && <div className="text-right text-xs font-bold uppercase tracking-wider text-[#E6C36A]">Actions</div>}
+          {actions && <div className="text-right text-sm font-bold text-[#E6C36A]">Actions</div>}
         </div>
 
         {/* Table Rows */}
@@ -171,7 +172,7 @@ export default function DataTable<T extends Record<string, unknown>>({
         ))}
 
         {paged.length === 0 && (
-          <div className="py-8 text-center text-sm text-[#64748B]">
+          <div className="py-8 text-center text-sm text-white/60">
             No results found
           </div>
         )}
@@ -179,7 +180,7 @@ export default function DataTable<T extends Record<string, unknown>>({
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between border-t border-white/[0.08]" style={{ padding: "16px 20px" }}>
-          <span className="text-xs font-medium text-[#64748B]">
+          <span className="text-xs font-medium text-white/60">
             Showing {page * perPage + 1}–{Math.min((page + 1) * perPage, sorted.length)} of {sorted.length}
           </span>
           <div className="flex gap-2">

@@ -1,271 +1,409 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import StatsCard from "@/app/components/StatsCard";
 import DataTable from "@/app/components/DataTable";
-import Modal from "@/app/components/ui/Modal";
-import StatusBadge from "@/app/components/StatusBadge";
-import FormField, { Input, Select } from "@/app/components/ui/FormField";
 import Button from "@/app/components/ui/Button";
-import { BAGS, TRANSFER_REQUESTS } from "@/app/lib/mock-data";
-import type { AdminBag, TransferRequest } from "@/app/lib/types";
+import Loader from "@/app/components/Loader";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
 // SVG path constants
 const ICON_BAG = "M20 7h-4l-2-3H10L8 7H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z";
-const ICON_CHECK = "M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3";
-const ICON_SCAN = "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z";
-const ICON_TRANSFER = "M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4";
+const ICON_CHIP = "M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m-2 6h2m14-6h2m-2 6h2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z";
+const ICON_SYNC = "M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15";
+
+interface BagType {
+  id: number;
+  iykItemId: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  collection: string | null;
+  contractAddress: string | null;
+  chainId: number | null;
+  totalChips: number;
+  createdAt: string;
+  syncedAt: string;
+  _count: { bags: number };
+}
+
+interface BagItem {
+  id: number;
+  uid: string;
+  bagTypeId: number;
+  tokenId: string | null;
+  registered: boolean;
+  userId: number | null;
+  status: string;
+  registeredAt: string | null;
+  lastTappedAt: string | null;
+  tapCount: number;
+  createdAt: string;
+  user: { id: number; email: string } | null;
+}
+
+// Flattened rows for DataTable
+interface BagTypeRow extends Record<string, unknown> {
+  id: number;
+  name: string;
+  collection: string;
+  description: string;
+  imageUrl: string;
+  totalChips: number;
+  createdAt: string;
+  _raw: BagType;
+}
+
+interface BagRow extends Record<string, unknown> {
+  uid: string;
+  status: string;
+  registered: string;
+  user: string;
+  tapCount: number;
+}
 
 export default function BagsPage() {
-  const [modalOpen, setModalOpen] = useState(false);
-  const [selectedBag, setSelectedBag] = useState<AdminBag | null>(null);
+  const [bagTypes, setBagTypes] = useState<BagType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const totalBags = BAGS.length;
-  const activeBags = BAGS.filter((b) => b.status === "Active").length;
-  const totalScans = BAGS.reduce((sum, b) => sum + b.scans, 0);
-  const pendingTransfers = TRANSFER_REQUESTS.filter((t) => t.status === "Pending").length;
+  // Sync state
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
 
-  const handleView = (bag: AdminBag) => {
-    setSelectedBag(bag);
-    setModalOpen(true);
+  // View mode: "types" or "bags"
+  const [view, setView] = useState<"types" | "bags">("types");
+  const [viewBagType, setViewBagType] = useState<BagType | null>(null);
+  const [viewBags, setViewBags] = useState<BagItem[]>([]);
+  const [viewBagsLoading, setViewBagsLoading] = useState(false);
+
+  const fetchBagTypes = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API_BASE}/admin/bag-types`);
+      const json = await res.json();
+      if (json.success) setBagTypes(json.data);
+      else setError(json.message || "Failed to load bag types");
+    } catch (err: any) {
+      setError(err.message || "Failed to connect to server");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  /* ── Bags Table Columns ── */
-  const bagColumns = [
+  useEffect(() => {
+    fetchBagTypes();
+  }, []);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/sync-bags`, { method: "POST" });
+      const json = await res.json();
+      if (json.success) {
+        const d = json.data;
+        setSyncResult(`Synced! ${d.newBagTypes} new types, ${d.newBags} new bags. (${d.skippedBagTypes} types, ${d.skippedBags} bags already existed)`);
+        await fetchBagTypes();
+      } else {
+        setSyncResult(`Sync failed: ${json.message}`);
+      }
+    } catch (err: any) {
+      setSyncResult(`Sync error: ${err.message}`);
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncResult(null), 6000);
+    }
+  };
+
+  const handleViewBags = async (bagType: BagType) => {
+    setViewBagType(bagType);
+    setView("bags");
+    setViewBagsLoading(true);
+    setViewBags([]);
+    try {
+      const res = await fetch(`${API_BASE}/admin/bag-types/${bagType.id}/bags`);
+      const json = await res.json();
+      if (json.success) setViewBags(json.data);
+    } catch {
+      // silent
+    } finally {
+      setViewBagsLoading(false);
+    }
+  };
+
+  // Loading state
+  if (loading) {
+    return <Loader text="Loading bag inventory..." fullPage />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center" style={{ height: "calc(100vh - 120px)" }}>
+        <div className="text-center">
+          <p className="text-sm text-[#EF4444]">{error}</p>
+          <Button
+            onClick={handleSync}
+            disabled={syncing}
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={syncing ? "animate-spin" : ""}>
+                <path d={ICON_SYNC} />
+              </svg>
+            }
+          >
+            {syncing ? "Syncing..." : "Sync from IYK"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Flatten bag types for DataTable
+  const bagTypeRows: BagTypeRow[] = bagTypes.map((bt) => ({
+    id: bt.id,
+    name: bt.name,
+    collection: bt.collection || "—",
+    description: bt.description || "—",
+    imageUrl: bt.imageUrl || "",
+    totalChips: bt._count?.bags || bt.totalChips,
+    createdAt: new Date(bt.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    _raw: bt,
+  }));
+
+  // Flatten bags for DataTable
+  const bagRows: BagRow[] = viewBags.map((bag) => ({
+    uid: bag.uid,
+    status: bag.status,
+    registered: bag.registered ? "Yes" : "No",
+    user: bag.user?.email || "—",
+    tapCount: bag.tapCount,
+  }));
+
+  const totalBags = bagTypes.reduce((sum, bt) => sum + (bt._count?.bags || bt.totalChips), 0);
+
+  /* ── Bag Types Table Columns ── */
+  const bagTypeColumns = [
     {
-      key: "serial",
-      label: "Serial",
-      render: (row: AdminBag) => (
-        <span className="font-mono text-xs text-white">{row.serial}</span>
+      key: "imageUrl",
+      label: "Image",
+      render: (row: BagTypeRow) => (
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-[#060D1F]">
+          {row.imageUrl ? (
+            <img src={row.imageUrl as string} alt={row.name as string} className="h-full w-full object-cover" crossOrigin="anonymous" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="text-[10px] text-white/60">No img</div>
+          )}
+        </div>
       ),
     },
-    { key: "model", label: "Model" },
     {
-      key: "owner",
-      label: "Owner",
-      render: (row: AdminBag) => (
-        <span className="text-white">{row.owner}</span>
+      key: "name",
+      label: "Bag Name",
+      render: (row: BagTypeRow) => (
+        <div className="min-w-0">
+          <div className="truncate text-xs font-semibold text-white">{row.name}</div>
+          <div className="truncate text-[10px] text-white/60">{(row.description as string).slice(0, 50)}{(row.description as string).length > 50 ? "..." : ""}</div>
+        </div>
       ),
     },
     {
-      key: "status",
-      label: "Status",
-      render: (row: AdminBag) => <StatusBadge status={row.status} />,
-    },
-    {
-      key: "nfcToken",
-      label: "NFC Token",
-      render: (row: AdminBag) => (
-        <span className="font-mono text-[11px] text-white">{row.nfcToken}</span>
+      key: "collection",
+      label: "Collection",
+      render: (row: BagTypeRow) => (
+        <span className="text-xs text-white">
+          {row.collection}
+        </span>
       ),
     },
     {
-      key: "scans",
-      label: "Scans",
-      render: (row: AdminBag) => (
-        <span className="text-white">{row.scans}</span>
+      key: "totalChips",
+      label: "Bags",
+      render: (row: BagTypeRow) => (
+        <span className="text-xs font-semibold text-white">{row.totalChips}</span>
       ),
     },
-    { key: "lastScan", label: "Last Scan" },
+    { key: "createdAt", label: "Created" },
   ];
 
-  const bagActions = (row: AdminBag) => (
-    <div className="flex items-center justify-end gap-2">
+  const bagTypeActions = (row: BagTypeRow) => (
+    <div className="flex items-center justify-end">
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          handleView(row);
-        }}
-        className="rounded-lg p-1.5 text-[#94A3B8] transition-colors hover:bg-white/5 hover:text-white"
-        title="View"
+        onClick={(e) => { e.stopPropagation(); handleViewBags(row._raw as BagType); }}
+        className="rounded-lg p-1.5 text-white/60 transition-colors hover:bg-white/5 hover:text-white"
+        title="View Details"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
           <circle cx="12" cy="12" r="3" />
         </svg>
       </button>
-      <button
-        onClick={(e) => e.stopPropagation()}
-        className="rounded-lg p-1.5 text-[#EF4444]/70 transition-colors hover:bg-[#EF4444]/10 hover:text-[#EF4444]"
-        title="Delete"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
-        </svg>
-      </button>
     </div>
   );
 
-  /* ── Transfer Requests Table Columns ── */
-  const transferColumns = [
+  /* ── Bags Table Columns ── */
+  const bagColumns = [
     {
-      key: "bag",
-      label: "Bag Serial",
-      render: (row: TransferRequest) => (
-        <span className="font-mono text-xs text-white">{row.bag}</span>
-      ),
-    },
-    {
-      key: "from",
-      label: "From",
-      render: (row: TransferRequest) => <span className="text-white">{row.from}</span>,
-    },
-    {
-      key: "to",
-      label: "To",
-      render: (row: TransferRequest) => <span className="text-white">{row.to}</span>,
+      key: "uid",
+      label: "Chip UID",
+      render: (row: BagRow) => <span className="font-mono text-xs text-white">{row.uid}</span>,
     },
     {
       key: "status",
       label: "Status",
-      render: (row: TransferRequest) => <StatusBadge status={row.status} />,
+      render: (row: BagRow) => {
+        const colors: Record<string, string> = {
+          ACTIVE: "text-emerald-400",
+          BANNED: "text-red-400",
+          LOST: "text-orange-400",
+          DEACTIVATED: "text-gray-400",
+        };
+        return (
+          <span className={`text-[10px] font-bold uppercase ${colors[row.status as string] || "text-white"}`}>
+            {row.status}
+          </span>
+        );
+      },
     },
-    { key: "requestedAt", label: "Requested" },
+    {
+      key: "registered",
+      label: "Registered",
+      render: (row: BagRow) => (
+        <span className={`text-xs font-semibold ${row.registered === "Yes" ? "text-emerald-400" : "text-white"}`}>
+          {row.registered}
+        </span>
+      ),
+    },
+    {
+      key: "user",
+      label: "Owner",
+      render: (row: BagRow) => <span className="text-xs text-white">{row.user}</span>,
+    },
+    {
+      key: "tapCount",
+      label: "Taps",
+      render: (row: BagRow) => <span className="text-xs text-white">{row.tapCount}</span>,
+    },
   ];
-
-  const transferActions = (row: TransferRequest) => (
-    <div className="flex items-center justify-end gap-2">
-      {row.status === "Pending" ? (
-        <>
-          <button
-            onClick={(e) => e.stopPropagation()}
-            className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-[#4ADE80] transition-colors hover:bg-[#4ADE80]/10"
-            title="Approve"
-          >
-            <div className="flex items-center gap-1">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 6L9 17l-5-5" />
-              </svg>
-              Approve
-            </div>
-          </button>
-          <button
-            onClick={(e) => e.stopPropagation()}
-            className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-[#EF4444] transition-colors hover:bg-[#EF4444]/10"
-            title="Reject"
-          >
-            <div className="flex items-center gap-1">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-              Reject
-            </div>
-          </button>
-        </>
-      ) : (
-        <span className="text-xs text-[#64748B]">--</span>
-      )}
-    </div>
-  );
 
   return (
     <div className="space-y-3">
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 gap-2 sm:gap-2.5 xl:grid-cols-4">
-        <StatsCard title="Total Bags" value={totalBags} change="5.2%" positive icon={ICON_BAG} />
-        <StatsCard title="Active Bags" value={activeBags} change="3.8%" positive icon={ICON_CHECK} />
-        <StatsCard title="Total Scans" value={totalScans.toLocaleString()} change="8.3%" positive icon={ICON_SCAN} />
-        <StatsCard title="Pending Transfers" value={pendingTransfers} icon={ICON_TRANSFER} />
-      </div>
-
-      {/* Bags Table */}
-      <DataTable<AdminBag & Record<string, unknown>>
-        columns={bagColumns as { key: string; label: string; render?: (row: AdminBag & Record<string, unknown>) => React.ReactNode }[]}
-        data={BAGS as (AdminBag & Record<string, unknown>)[]}
-        searchKey="serial"
-        searchPlaceholder="Search bags by serial number..."
-        actions={bagActions as (row: AdminBag & Record<string, unknown>) => React.ReactNode}
-        gridColumns="1fr 1.2fr 1.5fr 1fr 1fr 0.6fr 1.2fr 100px"
-      />
-
-      {/* Transfer Requests Section */}
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between" style={{ marginBottom: "10px" }}>
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-wide text-[#64748B]">Transfer Requests</h2>
-            <p className="text-xs text-[#94A3B8] mt-1">Review and manage bag ownership transfer requests</p>
+      {/* ── Bag Types List View ── */}
+      {view === "types" && (
+        <>
+          <div className="grid grid-cols-2 gap-2 sm:gap-2.5 xl:grid-cols-2">
+            <StatsCard title="Bag Types" value={bagTypes.length} icon={ICON_BAG} />
+            <StatsCard title="Total Bags" value={totalBags} icon={ICON_CHIP} />
           </div>
-          <div className="flex items-center gap-1.5 px-3 py-1.5">
-            <div className="h-1.5 w-1.5 rounded-full bg-[#E6C36A]" />
-            <span className="text-xs font-bold text-[#E6C36A]">{pendingTransfers} pending</span>
+
+          <div className="flex items-center justify-end gap-3">
+            {syncResult && (
+              <span className={`text-[11px] ${syncResult.startsWith("Synced") ? "text-emerald-400" : "text-[#EF4444]"}`}>
+                {syncResult}
+              </span>
+            )}
+            <Button
+              onClick={handleSync}
+              disabled={syncing}
+              icon={
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={syncing ? "animate-spin" : ""}>
+                  <path d={ICON_SYNC} />
+                </svg>
+              }
+            >
+              {syncing ? "Syncing..." : "Sync from IYK"}
+            </Button>
           </div>
-        </div>
 
-        <DataTable<TransferRequest & Record<string, unknown>>
-          columns={transferColumns as { key: string; label: string; render?: (row: TransferRequest & Record<string, unknown>) => React.ReactNode }[]}
-          data={TRANSFER_REQUESTS as (TransferRequest & Record<string, unknown>)[]}
-          actions={transferActions as (row: TransferRequest & Record<string, unknown>) => React.ReactNode}
-        />
-      </div>
+          <DataTable<BagTypeRow>
+            columns={bagTypeColumns as { key: string; label: string; render?: (row: BagTypeRow) => React.ReactNode }[]}
+            data={bagTypeRows}
+            searchKey="name"
+            searchPlaceholder="Search bags by name..."
+            actions={bagTypeActions}
+            gridColumns="60px 2fr 1fr 0.5fr 1fr 60px"
+          />
+        </>
+      )}
 
-      {/* View Bag Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Bag Details" width="650px">
-        {selectedBag && (
-          <div>
-            {/* Bag header */}
-            <div className="mb-6 pb-4" style={{ marginBottom: "20px" }}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-12">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-[#64748B]">Serial number:</span>
-                    <span className="font-mono text-base font-semibold text-white">{selectedBag.serial}</span>
+      {/* ── Bag Type Detail View ── */}
+      {view === "bags" && viewBagType && (
+        <>
+          {/* Back button */}
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              onClick={() => { setView("types"); setViewBagType(null); setViewBags([]); }}
+              icon={
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              }
+            >
+              Back to All Bag Types
+            </Button>
+          </div>
+
+          {/* Bag Type Info Card */}
+          <div className="rounded-xl border border-white/[0.06] bg-gradient-to-br from-[#0b1326] to-[#0a1020]" style={{ padding: "20px 24px" }}>
+            <div className="flex items-start gap-4">
+              <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-[#060D1F]">
+                {viewBagType.imageUrl ? (
+                  <img src={viewBagType.imageUrl} alt={viewBagType.name} className="h-full w-full object-cover" crossOrigin="anonymous" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-[10px] text-white/60">No image</div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-bold text-[#E6C36A]">{viewBagType.name}</h3>
+                <p className="mt-1 text-xs text-white/60 leading-relaxed">{viewBagType.description || "No description"}</p>
+
+                <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-[#E6C36A]">Collection </span>
+                    <span className="text-xs text-white">{viewBagType.collection || "—"}</span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-[#64748B]">Model:</span>
-                    <span className="text-base text-white">{selectedBag.model}</span>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-[#E6C36A]">Total Bags </span>
+                    <span className="text-xs text-white">{viewBagType._count?.bags || viewBagType.totalChips}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-[#E6C36A]">Created </span>
+                    <span className="text-xs text-white">
+                      {new Date(viewBagType.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-[#E6C36A]">Last Synced </span>
+                    <span className="text-xs text-white">
+                      {new Date(viewBagType.syncedAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </span>
                   </div>
                 </div>
-                <StatusBadge status={selectedBag.status} />
               </div>
             </div>
-
-            <div className="grid grid-cols-2 gap-x-4">
-              <FormField label="Owner">
-                <Input defaultValue={selectedBag.owner} />
-              </FormField>
-              <FormField label="Status">
-                <Select defaultValue={selectedBag.status}>
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                  <option value="Lost">Lost</option>
-                </Select>
-              </FormField>
-            </div>
-
-            <div className="grid grid-cols-2 gap-x-4">
-              <FormField label="NFC token">
-                <Input defaultValue={selectedBag.nfcToken} readOnly />
-              </FormField>
-              <FormField label="Total scans">
-                <Input defaultValue={selectedBag.scans} type="number" readOnly />
-              </FormField>
-            </div>
-
-            <div className="grid grid-cols-2 gap-x-4">
-              <FormField label="Last scan">
-                <Input defaultValue={selectedBag.lastScan} readOnly />
-              </FormField>
-              <FormField label="Registered">
-                <Input defaultValue={selectedBag.registeredAt} readOnly />
-              </FormField>
-            </div>
-
-            <div className="flex justify-end gap-3 border-t border-white/[0.08]" style={{ marginTop: "40px", paddingTop: "20px", marginBottom: "20px" }}>
-              <Button
-                variant="ghost"
-                onClick={() => setModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => setModalOpen(false)}
-              >
-                Save Changes
-              </Button>
-            </div>
           </div>
-        )}
-      </Modal>
+
+          {/* Stats */}
+          <div className="grid grid-cols-2 gap-2 sm:gap-2.5 xl:grid-cols-2">
+            <StatsCard title="Total Bags" value={viewBagsLoading ? "..." : viewBags.length} icon={ICON_CHIP} />
+            <StatsCard title="Registered" value={viewBagsLoading ? "..." : viewBags.filter(b => b.registered).length} icon={ICON_BAG} />
+          </div>
+
+          {/* Bags Table */}
+          {viewBagsLoading ? (
+            <Loader text="Loading bags..." />
+          ) : (
+            <DataTable<BagRow>
+              columns={bagColumns as { key: string; label: string; render?: (row: BagRow) => React.ReactNode }[]}
+              data={bagRows}
+              searchKey="uid"
+              searchPlaceholder="Search bags by UID..."
+              gridColumns="2fr 1fr 0.8fr 1.5fr 0.5fr"
+            />
+          )}
+        </>
+      )}
     </div>
   );
 }
