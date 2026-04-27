@@ -26,6 +26,8 @@ interface UserData extends Record<string, unknown> {
   points: number;
   bags: number;
   joinedAt: string;
+  postingBlocked?: boolean;
+  postingBlockedReason?: string | null;
 }
 
 export default function UsersPage() {
@@ -36,6 +38,14 @@ export default function UsersPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
+
+  // Block / unblock modal state. blockModal holds the target user + mode;
+  // blockReason is the textarea value; blockError surfaces API failures
+  // inline so we never have to fall back to a window.alert popup.
+  const [blockModal, setBlockModal] = useState<{ user: UserData; mode: "block" | "unblock" } | null>(null);
+  const [blockReason, setBlockReason] = useState("");
+  const [blockSubmitting, setBlockSubmitting] = useState(false);
+  const [blockError, setBlockError] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     try {
@@ -70,6 +80,60 @@ export default function UsersPage() {
   const handleView = (user: UserData) => {
     setSelectedUser(user);
     setModalOpen(true);
+  };
+
+  // Open the styled modal instead of using window.prompt / window.confirm.
+  const handleToggleBlock = (user: UserData) => {
+    const mode: "block" | "unblock" = user.postingBlocked ? "unblock" : "block";
+    setBlockReason(user.postingBlockedReason || "");
+    setBlockError(null);
+    setBlockModal({ user, mode });
+  };
+
+  const closeBlockModal = () => {
+    if (blockSubmitting) return;
+    setBlockModal(null);
+    setBlockReason("");
+    setBlockError(null);
+  };
+
+  const submitBlock = async () => {
+    if (!blockModal) return;
+    const { user, mode } = blockModal;
+    const isBlocking = mode === "block";
+    const reason = isBlocking ? blockReason.trim() || null : null;
+    setBlockSubmitting(true);
+    setBlockError(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${user.id}/posting-block`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blocked: isBlocking, reason }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setBlockError(json.message || "Update failed");
+        return;
+      }
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === user.id
+            ? {
+                ...u,
+                postingBlocked: isBlocking,
+                postingBlockedReason: reason,
+                status: isBlocking ? "Banned" : "Active",
+              }
+            : u
+        )
+      );
+      setBlockModal(null);
+      setBlockReason("");
+    } catch (err: any) {
+      setBlockError(err?.message || "Network error — please try again");
+    } finally {
+      setBlockSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -128,14 +192,30 @@ export default function UsersPage() {
         </svg>
       </button>
       <button
-        onClick={(e) => e.stopPropagation()}
-        className="rounded-lg p-1.5 text-[#EF4444]/70 transition-colors hover:bg-[#EF4444]/10 hover:text-[#EF4444]"
-        title="Ban"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleToggleBlock(row);
+        }}
+        className={
+          row.postingBlocked
+            ? "rounded-lg p-1.5 text-[#34D399] transition-colors hover:bg-[#34D399]/10"
+            : "rounded-lg p-1.5 text-[#EF4444]/70 transition-colors hover:bg-[#EF4444]/10 hover:text-[#EF4444]"
+        }
+        title={row.postingBlocked ? "Unblock community posting" : "Block from posting in community"}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <path d="M4.93 4.93l14.14 14.14" />
-        </svg>
+        {row.postingBlocked ? (
+          // checkmark — restore access
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <path d="M22 4L12 14.01l-3-3" />
+          </svg>
+        ) : (
+          // ban — block posting
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M4.93 4.93l14.14 14.14" />
+          </svg>
+        )}
       </button>
     </div>
   );
@@ -278,6 +358,125 @@ export default function UsersPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Block / unblock community posting */}
+      <Modal
+        open={!!blockModal}
+        onClose={closeBlockModal}
+        title={blockModal?.mode === "block" ? "Block from community" : "Restore community access"}
+        width="520px"
+      >
+        {blockModal && (
+          <div className="space-y-6">
+            {/* User card — readable, not greyed out. Avatar tile + name + email
+                in clear hierarchy. */}
+            <div
+              className="flex items-center"
+              style={{
+                gap: "14px",
+                padding: "14px 16px",
+                background: blockModal.mode === "block" ? "rgba(239,68,68,0.08)" : "rgba(52,211,153,0.08)",
+                border: `1px solid ${blockModal.mode === "block" ? "rgba(239,68,68,0.25)" : "rgba(52,211,153,0.25)"}`,
+                borderRadius: "10px",
+              }}
+            >
+              <div
+                style={{
+                  width: "44px", height: "44px", borderRadius: "10px",
+                  background: blockModal.mode === "block" ? "rgba(239,68,68,0.18)" : "rgba(52,211,153,0.18)",
+                  color: blockModal.mode === "block" ? "#FCA5A5" : "#86EFAC",
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                }}
+              >
+                {blockModal.mode === "block" ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><path d="M4.93 4.93l14.14 14.14" />
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" />
+                  </svg>
+                )}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="font-semibold text-white" style={{ fontSize: "15px", marginBottom: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {blockModal.user.name}
+                </div>
+                <div className="text-white/80" style={{ fontSize: "12.5px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {blockModal.user.email}
+                </div>
+              </div>
+            </div>
+
+            {/* Action description */}
+            <p className="text-white" style={{ fontSize: "13.5px", lineHeight: 1.7, margin: 0 }}>
+              {blockModal.mode === "block"
+                ? <>This user will be unable to <span className="font-semibold text-[#FCA5A5]">create posts or comments</span> in the community. Reading, login, and all other features remain available.</>
+                : <>Posting and commenting in the community will be restored. The user will receive an email confirming the change.</>}
+            </p>
+
+            {blockModal.mode === "block" && (
+              <div>
+                <label className="block font-semibold text-white" style={{ fontSize: "13px", marginBottom: "8px" }}>
+                  Reason <span className="text-white/50" style={{ fontWeight: 400 }}>(optional)</span>
+                </label>
+                <textarea
+                  value={blockReason}
+                  onChange={(e) => setBlockReason(e.target.value)}
+                  placeholder="Shown to the user when they try to post. Leave empty for none."
+                  maxLength={200}
+                  rows={3}
+                  disabled={blockSubmitting}
+                  className="w-full rounded-lg border bg-[#020617] text-white outline-none transition-colors"
+                  style={{
+                    resize: "vertical", minHeight: "84px", maxHeight: "200px",
+                    padding: "12px 14px", lineHeight: 1.5, fontSize: "13.5px",
+                    borderColor: "rgba(255,255,255,0.12)",
+                  }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = "#E6C36A"; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; }}
+                />
+                <div className="mt-2 flex items-center justify-between text-[11px]">
+                  <span className="text-white/60">Visible to the user in the error they see when posting.</span>
+                  <span className="text-white/60">{blockReason.length}/200</span>
+                </div>
+              </div>
+            )}
+
+            {blockError && (
+              <div
+                className="flex items-start"
+                style={{
+                  gap: "10px", padding: "10px 12px",
+                  background: "rgba(239,68,68,0.1)",
+                  border: "1px solid rgba(239,68,68,0.35)",
+                  borderRadius: "8px",
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FCA5A5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: "1px" }}>
+                  <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <span className="text-[#FCA5A5]" style={{ fontSize: "12.5px", lineHeight: 1.5 }}>{blockError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2" style={{ paddingTop: "4px" }}>
+              <Button variant="secondary" onClick={closeBlockModal} disabled={blockSubmitting}>
+                Cancel
+              </Button>
+              <Button
+                onClick={submitBlock}
+                disabled={blockSubmitting}
+                className={blockModal.mode === "block" ? "!bg-[#EF4444] !shadow-none !text-white hover:!bg-[#dc2626]" : ""}
+              >
+                {blockSubmitting
+                  ? (blockModal.mode === "block" ? "Blocking…" : "Restoring…")
+                  : (blockModal.mode === "block" ? "Block user" : "Restore access")}
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

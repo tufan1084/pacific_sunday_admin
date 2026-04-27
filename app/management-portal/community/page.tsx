@@ -52,6 +52,29 @@ function formatDate(iso: string) {
   });
 }
 
+// Translate raw report-reason slugs ("spam_or_misleading") into clean labels
+// ("Spam or misleading content"). Mirrors the mapping the backend email
+// service uses so the moderator UI and the user's email read the same way.
+const REASON_LABELS: Record<string, string> = {
+  spam: "Spam or misleading content",
+  spam_or_misleading: "Spam or misleading content",
+  harassment: "Harassment or bullying",
+  hate_speech: "Hate speech",
+  nudity: "Nudity or sexual content",
+  violence: "Violence or graphic content",
+  scam: "Scam or fraud",
+  off_topic: "Off topic for this community",
+  inappropriate: "Inappropriate content",
+  other: "Other",
+};
+const reasonLabel = (raw: string | null | undefined) => {
+  if (!raw) return "Community guidelines violation";
+  const key = String(raw).toLowerCase().trim();
+  if (REASON_LABELS[key]) return REASON_LABELS[key];
+  return key.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+};
+const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+
 interface AdminTagOption {
   id: number;
   slug: string;
@@ -297,41 +320,56 @@ export default function CommunityPage() {
     );
   }
 
-  const columns = [
+  const columns: Array<{
+    key: string;
+    label: string;
+    align?: "left" | "center" | "right";
+    render?: (row: CommunityPost) => React.ReactNode;
+  }> = [
     {
       key: "author",
       label: "Author",
-      render: (row: CommunityPost) => <span className="text-white">{row.author}</span>,
+      align: "left",
+      render: (row) => (
+        <span className="block truncate font-medium normal-case text-white" title={row.author}>{row.author}</span>
+      ),
     },
     {
       key: "content",
       label: "Content",
-      render: (row: CommunityPost) => (
-        <span className="text-[#94A3B8]">
-          {row.content.length > 60 ? row.content.substring(0, 60) + "..." : row.content}
+      align: "left",
+      render: (row) => (
+        <span className="block truncate text-[#94A3B8]" title={row.content}>
+          {row.content}
         </span>
       ),
     },
     {
       key: "group",
       label: "Group",
-      render: (row: CommunityPost) => <span className="text-[#94A3B8]">{row.group}</span>,
+      align: "left",
+      render: (row) => (
+        <span className="block truncate text-[#94A3B8]" title={row.group}>{row.group}</span>
+      ),
     },
     {
       key: "likes",
       label: "Likes",
-      render: (row: CommunityPost) => <span className="text-[#94A3B8]">{row.likes}</span>,
+      align: "center",
+      render: (row) => <span className="tabular-nums text-[#94A3B8]">{row.likes}</span>,
     },
     {
       key: "replies",
       label: "Replies",
-      render: (row: CommunityPost) => <span className="text-[#94A3B8]">{row.replies}</span>,
+      align: "center",
+      render: (row) => <span className="tabular-nums text-[#94A3B8]">{row.replies}</span>,
     },
     {
       key: "reports",
       label: "Reports",
-      render: (row: CommunityPost) => (
-        <span className={row.pendingReports > 0 ? "text-[#EF4444]" : "text-[#94A3B8]"}>
+      align: "center",
+      render: (row) => (
+        <span className={`tabular-nums ${row.pendingReports > 0 ? "font-semibold text-[#EF4444]" : "text-[#94A3B8]"}`}>
           {row.reports}
         </span>
       ),
@@ -339,12 +377,18 @@ export default function CommunityPage() {
     {
       key: "status",
       label: "Status",
-      render: (row: CommunityPost) => <StatusBadge status={row.status} />,
+      align: "left",
+      render: (row) => (
+        <span className="inline-flex"><StatusBadge status={row.status} /></span>
+      ),
     },
     {
       key: "createdAt",
       label: "Date",
-      render: (row: CommunityPost) => <span className="text-[#64748B]">{formatDate(row.createdAt)}</span>,
+      align: "right",
+      render: (row) => (
+        <span className="whitespace-nowrap tabular-nums text-[#64748B]">{formatDate(row.createdAt)}</span>
+      ),
     },
   ];
 
@@ -358,16 +402,6 @@ export default function CommunityPage() {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
           <circle cx="12" cy="12" r="3" />
-        </svg>
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); handleOpenTags(row); }}
-        className="rounded-lg p-1.5 text-[#94A3B8] transition-colors hover:bg-white/5 hover:text-[#E6C36A]"
-        title="Edit tags"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" />
-          <line x1="7" y1="7" x2="7" y2="7" />
         </svg>
       </button>
       <button
@@ -446,128 +480,148 @@ export default function CommunityPage() {
         })}
       </div>
 
-      {/* Posts Table */}
+      {/* Posts Table.
+          Columns: Author | Content | Group | Likes | Replies | Reports | Status | Date | Actions.
+          Numeric columns (Likes/Replies/Reports) get tabular-nums for clean
+          right-edge alignment of varying-width digits. */}
       <DataTable<CommunityPost>
-        columns={columns as { key: string; label: string; render?: (row: CommunityPost) => React.ReactNode }[]}
+        columns={columns as { key: string; label: string; align?: "left" | "center" | "right"; render?: (row: CommunityPost) => React.ReactNode }[]}
         data={filteredPosts}
         searchKey="author"
         searchPlaceholder="Search posts by author..."
-        gridColumns="1.8fr 2.8fr 0.9fr 0.5fr 0.6fr 0.6fr 0.9fr 1.4fr 120px"
+        gridColumns="1.4fr 2.6fr 1fr 70px 80px 90px 110px 1fr 110px"
         actions={actions}
       />
 
       {/* View Post Modal */}
-      <Modal open={viewModalOpen} onClose={() => setViewModalOpen(false)} title="Post Details" width="650px">
-        {selectedPost && (
+      <Modal open={viewModalOpen} onClose={() => setViewModalOpen(false)} title="Post Details" width="640px">
+        {selectedPost && (() => {
+          const labelClass = "text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#E8C96A]/80";
+          const dividerStyle: React.CSSProperties = { borderTop: "1px solid rgba(255,255,255,0.06)" };
+          return (
           <div>
-            <div className="mb-6 pb-4 border-b border-white/[0.08]">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-[#64748B] mb-1">Author</p>
-                  <p className="text-base font-semibold text-white">{selectedPost.author}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-[#64748B] mb-1">Group</p>
-                  <p className="text-base font-semibold text-white">{selectedPost.group}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-[#64748B] mb-1">Date</p>
-                  <p className="text-base font-semibold text-white">{formatDate(selectedPost.createdAt)}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-[#64748B] mb-1">Status</p>
-                  <StatusBadge status={selectedPost.status} />
-                </div>
+            {/* Meta strip — flat 4-column row, no card. */}
+            <div className="grid grid-cols-2 sm:grid-cols-4" style={{ gap: "16px", paddingBottom: "14px" }}>
+              <div className="min-w-0">
+                <div className={labelClass} style={{ marginBottom: "4px" }}>Author</div>
+                <div className="truncate text-[13px] font-semibold text-white" title={selectedPost.author}>{selectedPost.author}</div>
+              </div>
+              <div className="min-w-0">
+                <div className={labelClass} style={{ marginBottom: "4px" }}>Group</div>
+                <div className="truncate text-[13px] font-semibold text-white" title={selectedPost.group}>{selectedPost.group}</div>
+              </div>
+              <div className="min-w-0">
+                <div className={labelClass} style={{ marginBottom: "4px" }}>Date</div>
+                <div className="whitespace-nowrap text-[13px] font-semibold text-white">{formatDate(selectedPost.createdAt)}</div>
+              </div>
+              <div className="min-w-0">
+                <div className={labelClass} style={{ marginBottom: "4px" }}>Status</div>
+                <StatusBadge status={selectedPost.status} />
               </div>
             </div>
 
-            <div style={{ marginBottom: "24px" }}>
-              <p className="text-xs font-bold text-[#64748B]" style={{ marginBottom: "12px" }}>Content</p>
-              <p className="text-sm leading-relaxed text-white" style={{ marginLeft: "16px" }}>{selectedPost.content}</p>
-            </div>
-
-            <div style={{ marginBottom: "24px" }}>
-              <p className="text-xs font-bold text-[#64748B]" style={{ marginBottom: "12px" }}>Engagement</p>
-              <div className="grid grid-cols-3" style={{ gap: "24px", marginLeft: "16px" }}>
-                <div>
-                  <p className="text-xs text-[#64748B]" style={{ marginBottom: "8px" }}>Likes</p>
-                  <p className="text-lg font-bold text-white">{selectedPost.likes}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-[#64748B]" style={{ marginBottom: "8px" }}>Replies</p>
-                  <p className="text-lg font-bold text-white">{selectedPost.replies}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-[#64748B]" style={{ marginBottom: "8px" }}>Reports</p>
-                  <p className={`text-lg font-bold ${selectedPost.pendingReports > 0 ? "text-[#EF4444]" : "text-white"}`}>
-                    {selectedPost.reports}
-                  </p>
-                </div>
+            <div style={{ ...dividerStyle, paddingTop: "14px" }}>
+              <div className={labelClass} style={{ marginBottom: "6px" }}>Content</div>
+              <div
+                className="text-[13px] leading-[1.6] text-white"
+                style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+              >
+                {selectedPost.content}
               </div>
             </div>
 
+            <div style={{ ...dividerStyle, marginTop: "14px", paddingTop: "14px" }}>
+              <div className={labelClass} style={{ marginBottom: "8px" }}>Engagement</div>
+              <div className="flex" style={{ gap: "32px" }}>
+                {[
+                  { label: "Likes", value: selectedPost.likes, color: "text-white" },
+                  { label: "Replies", value: selectedPost.replies, color: "text-white" },
+                  { label: "Reports", value: selectedPost.reports, color: selectedPost.pendingReports > 0 ? "text-[#EF4444]" : "text-white" },
+                ].map((m) => (
+                  <div key={m.label}>
+                    <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-white/55" style={{ marginBottom: "2px" }}>{m.label}</div>
+                    <div className={`text-[20px] font-bold leading-none tabular-nums ${m.color}`}>{m.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Reports list — divider rows, no nested cards. */}
             {selectedPost.reports > 0 && (
-              <div style={{ marginBottom: "24px" }}>
-                <div className="flex items-center justify-between" style={{ marginBottom: "12px" }}>
-                  <p className="text-xs font-bold text-[#64748B]">Reports ({selectedPost.reports})</p>
+              <div style={{ ...dividerStyle, marginTop: "14px", paddingTop: "14px" }}>
+                <div className="flex items-center justify-between" style={{ marginBottom: "8px" }}>
+                  <div className={labelClass}>Reports · {selectedPost.reports}</div>
                   {selectedPost.pendingReports > 0 && (
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-3">
                       <button
                         onClick={() => handleResolveReports(selectedPost, "dismissed")}
-                        className="text-xs font-semibold text-[#94A3B8] hover:text-white"
+                        className="text-[11px] font-semibold text-white/60 transition-colors hover:text-white"
                       >
                         Dismiss all
                       </button>
                       <button
                         onClick={() => handleResolveReports(selectedPost, "reviewed")}
-                        className="text-xs font-semibold text-[#4ADE80] hover:text-[#4ADE80]/80"
+                        className="text-[11px] font-semibold text-[#4ADE80] transition-colors hover:text-[#86EFAC]"
                       >
                         Mark all reviewed
                       </button>
                     </div>
                   )}
                 </div>
-                <div style={{ marginLeft: "16px", maxHeight: "200px", overflowY: "auto" }}>
+                <div style={{ maxHeight: "220px", overflowY: "auto" }}>
                   {reportsLoading ? (
-                    <p className="text-xs text-[#64748B]">Loading reports…</p>
+                    <p className="text-xs text-white/55">Loading reports…</p>
                   ) : reports.length === 0 ? (
-                    <p className="text-xs text-[#64748B]">No reports</p>
+                    <p className="text-xs text-white/55">No reports</p>
                   ) : (
-                    <ul className="space-y-2">
-                      {reports.map((r) => (
-                        <li key={r.id} className="rounded-lg border border-white/[0.06] p-2.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-white">{r.reporter.name}</span>
-                            <StatusBadge status={r.status} />
+                    reports.map((r, idx) => (
+                      <div
+                        key={r.id}
+                        style={{
+                          paddingTop: idx === 0 ? "0" : "10px",
+                          paddingBottom: idx === reports.length - 1 ? "0" : "10px",
+                          borderBottom: idx === reports.length - 1 ? "none" : "1px solid rgba(255,255,255,0.04)",
+                        }}
+                      >
+                        <div className="flex items-start justify-between" style={{ gap: "10px", marginBottom: "4px" }}>
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] font-semibold text-white" title={r.reporter.name}>
+                              {r.reporter.name}
+                            </div>
+                            <div className="text-[11px] text-white/55">@{r.reporter.username} · {formatDate(r.createdAt)}</div>
                           </div>
-                          <p className="text-xs text-[#94A3B8]" style={{ marginTop: "4px" }}>
-                            <span className="font-semibold text-[#E6C36A]">{r.reason}</span>
-                            {r.details ? ` — ${r.details}` : ""}
-                          </p>
-                          <p className="text-[10px] text-[#64748B]" style={{ marginTop: "4px" }}>
-                            {formatDate(r.createdAt)}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
+                          <StatusBadge status={titleCase(r.status)} />
+                        </div>
+                        <div className="text-[12.5px] text-white/85" style={{ lineHeight: 1.5 }}>
+                          <span className="font-semibold text-[#E8C96A]">{reasonLabel(r.reason)}</span>
+                          {r.details && <span className="text-white/70"> — {r.details}</span>}
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>
             )}
 
-            <div className="flex justify-end gap-3 border-t border-white/[0.08]" style={{ marginTop: "40px", paddingTop: "20px", marginBottom: "20px" }}>
+            {/* Footer actions */}
+            <div className="flex flex-wrap items-center justify-end" style={{ ...dividerStyle, gap: "8px", marginTop: "16px", paddingTop: "14px" }}>
               <Button variant="ghost" onClick={() => setViewModalOpen(false)}>
-                Dismiss
+                Close
               </Button>
-              <Button variant="secondary" onClick={() => handleToggleHide(selectedPost)}>
-                {selectedPost.isHidden ? "Show Post" : "Hide Post"}
+              <Button variant="secondary" onClick={() => handleToggleHide(selectedPost)} disabled={actionBusy === selectedPost.id}>
+                {selectedPost.isHidden ? "Show post" : "Hide post"}
               </Button>
-              <Button onClick={() => handleDelete(selectedPost)}>
-                Delete Post
+              <Button
+                onClick={() => handleDelete(selectedPost)}
+                disabled={actionBusy === selectedPost.id}
+                className="!bg-[#EF4444] !shadow-none !text-white hover:!bg-[#dc2626]"
+              >
+                Delete post
               </Button>
             </div>
           </div>
-        )}
+          );
+        })()}
       </Modal>
 
       {/* Edit Tags Modal */}

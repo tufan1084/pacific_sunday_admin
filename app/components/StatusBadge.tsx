@@ -26,7 +26,7 @@ export default function StatusBadge({ status }: { status: string }) {
 
   return (
     <span
-      className="text-[10px] font-bold uppercase tracking-wide"
+      className="text-[11px] font-semibold normal-case tracking-wide"
       style={{ color }}
     >
       {status}

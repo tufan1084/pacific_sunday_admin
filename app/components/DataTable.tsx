@@ -6,6 +6,9 @@ interface Column<T> {
   key: string;
   label: string;
   render?: (row: T) => React.ReactNode;
+  // Align both the header label and the cell content for this column.
+  // Defaults to "left" so existing usages keep their current layout.
+  align?: "left" | "center" | "right";
 }
 
 interface DataTableProps<T> {
@@ -112,44 +115,49 @@ export default function DataTable<T extends Record<string, unknown>>({
       <div className="space-y-0">
         {/* Table Header */}
         <div className="grid gap-4 border-b border-white/[0.08]" style={{ padding: "8px 10px", gridTemplateColumns: gridColumns || (actions ? '2fr 2.5fr 1fr 1fr 1.5fr 1.5fr 100px' : '2fr 2.5fr 1fr 1fr 1.5fr 1.5fr') }}>
-          {columns.map((col) => (
-            <button
-              key={col.key}
-              onClick={() => handleSort(col.key)}
-              className="flex items-center gap-1.5 text-left text-sm font-bold text-[#E6C36A] transition-colors hover:text-[#c9a84e]"
-            >
-              {col.label}
-              <div className="flex flex-col">
-                <svg
-                  width="10"
-                  height="10"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={sortKey === col.key && sortOrder === "asc" ? "#E6C36A" : "#64748B"}
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ marginBottom: "-2px" }}
-                >
-                  <path d="M18 15l-6-6-6 6" />
-                </svg>
-                <svg
-                  width="10"
-                  height="10"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={sortKey === col.key && sortOrder === "desc" ? "#E6C36A" : "#64748B"}
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ marginTop: "-2px" }}
-                >
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              </div>
-            </button>
-          ))}
-          {actions && <div className="text-right text-sm font-bold text-[#E6C36A]">Actions</div>}
+          {columns.map((col) => {
+            const align = col.align || "left";
+            const headerJustify =
+              align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start";
+            return (
+              <button
+                key={col.key}
+                onClick={() => handleSort(col.key)}
+                className={`flex items-center gap-1.5 text-sm font-bold text-[#E6C36A] transition-colors hover:text-[#c9a84e] ${headerJustify}`}
+              >
+                {col.label}
+                <div className="flex flex-col">
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={sortKey === col.key && sortOrder === "asc" ? "#E6C36A" : "#64748B"}
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ marginBottom: "-2px" }}
+                  >
+                    <path d="M18 15l-6-6-6 6" />
+                  </svg>
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={sortKey === col.key && sortOrder === "desc" ? "#E6C36A" : "#64748B"}
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ marginTop: "-2px" }}
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </div>
+              </button>
+            );
+          })}
+          {actions && <div className="self-center text-right text-sm font-bold text-[#E6C36A]">Actions</div>}
         </div>
 
         {/* Table Rows */}
@@ -160,12 +168,20 @@ export default function DataTable<T extends Record<string, unknown>>({
               className={`grid gap-4 ${onRowClick ? "cursor-pointer" : ""}`}
               style={{ padding: "10px 10px", gridTemplateColumns: gridColumns || (actions ? '2fr 2.5fr 1fr 1fr 1.5fr 1.5fr 100px' : '2fr 2.5fr 1fr 1fr 1.5fr 1.5fr') }}
             >
-              {columns.map((col) => (
-                <div key={col.key} className="text-xs text-white">
-                  {col.render ? col.render(row) : String(row[col.key] ?? "")}
-                </div>
-              ))}
-              {actions && <div className="text-right">{actions(row)}</div>}
+              {columns.map((col) => {
+                const align = col.align || "left";
+                const cellAlign =
+                  align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+                // min-w-0 + overflow-hidden are essential — without them a wide
+                // child (long post content) blows out the grid track and pushes
+                // every subsequent column off-screen.
+                return (
+                  <div key={col.key} className={`min-w-0 overflow-hidden text-xs text-white ${cellAlign} self-center`}>
+                    {col.render ? col.render(row) : String(row[col.key] ?? "")}
+                  </div>
+                );
+              })}
+              {actions && <div className="min-w-0 self-center text-right">{actions(row)}</div>}
             </div>
             {i !== paged.length - 1 && <div className="border-b border-white/[0.06]"></div>}
           </div>
